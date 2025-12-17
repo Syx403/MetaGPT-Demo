@@ -1,0 +1,29 @@
+type: class
+description: A simple calculator tool that performs basic arithmetic operations and
+  calculates factorials.
+methods:
+  add:
+    type: function
+    description: Calculate the sum of two numbers.
+    signature: (a, b)
+    parameters: ''
+  divide:
+    type: function
+    description: Calculate the quotient of two numbers.
+    signature: (a, b)
+    parameters: ''
+  factorial:
+    type: function
+    description: Calculate the factorial of a non-negative integer.
+    signature: (n)
+    parameters: ''
+  multiply:
+    type: function
+    description: Calculate the product of two numbers.
+    signature: (a, b)
+    parameters: ''
+  subtract:
+    type: function
+    description: Calculate the difference of two numbers.
+    signature: (a, b)
+    parameters: ''

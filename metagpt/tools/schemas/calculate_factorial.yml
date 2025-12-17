@@ -1,0 +1,4 @@
+type: function
+description: Calculate the factorial of a non-negative integer.
+signature: (n)
+parameters: ''
