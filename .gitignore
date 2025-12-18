@@ -1,6 +1,7 @@
 .env
 .env.local
 config/config2.yaml
+config/config2.example.yaml
 key.yaml
 
 __pycache__/
