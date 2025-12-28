@@ -1,0 +1,15 @@
+2025-12-29 01:03:58.852 | INFO     | MAT.config_loader:_load_config:95 - ✅ Loaded config from: /Users/richsion/Desktop/MetaGPT/MetaGPT-Ewan/config/config2.yaml
+2025-12-29 01:05:31.643 | INFO     | MAT.config_loader:_load_config:95 - ✅ Loaded config from: /Users/richsion/Desktop/MetaGPT/MetaGPT-Ewan/config/config2.yaml
+2025-12-29 01:07:59.856 | INFO     | MAT.config_loader:_load_config:95 - ✅ Loaded config from: /Users/richsion/Desktop/MetaGPT/MetaGPT-Ewan/config/config2.yaml
+2025-12-29 01:07:59.856 | INFO     | MAT.config_loader:print_config_status:293 - ============================================================
+2025-12-29 01:07:59.856 | INFO     | MAT.config_loader:print_config_status:294 - 📋 MAT Configuration Status
+2025-12-29 01:07:59.856 | INFO     | MAT.config_loader:print_config_status:295 - ============================================================
+2025-12-29 01:07:59.856 | INFO     | MAT.config_loader:print_config_status:296 - Project Root: /Users/richsion/Desktop/MetaGPT/MetaGPT-Ewan
+2025-12-29 01:07:59.857 | INFO     | MAT.config_loader:print_config_status:297 - Config File: /Users/richsion/Desktop/MetaGPT/MetaGPT-Ewan/config/config2.yaml
+2025-12-29 01:07:59.857 | INFO     | MAT.config_loader:print_config_status:298 - OpenAI API: ✅ Configured
+2025-12-29 01:07:59.857 | INFO     | MAT.config_loader:print_config_status:299 - Tavily API: ✅ Configured
+2025-12-29 01:07:59.857 | INFO     | MAT.config_loader:print_config_status:300 - Use Tavily: True
+2025-12-29 01:07:59.857 | INFO     | MAT.config_loader:print_config_status:301 - Log Level: INFO
+2025-12-29 01:07:59.857 | INFO     | MAT.config_loader:print_config_status:302 - Output Dir: /Users/richsion/Desktop/MetaGPT/MetaGPT-Ewan/MAT/data/search_results
+2025-12-29 01:07:59.857 | INFO     | MAT.config_loader:print_config_status:303 - ============================================================
+2025-12-29 01:09:33.963 | INFO     | MAT.config_loader:_load_config:95 - ✅ Loaded config from: /Users/richsion/Desktop/MetaGPT/MetaGPT-Ewan/config/config2.yaml

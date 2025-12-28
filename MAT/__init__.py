@@ -18,6 +18,7 @@ from .schemas import (
 )
 from .environment import InvestmentEnvironment
 from .roles import BaseInvestmentAgent, AlphaStrategist, SentimentAnalyst
+# Import action types (message types for pub-sub)
 from .actions import (
     StartAnalysis,
     PublishFAReport,
@@ -27,6 +28,10 @@ from .actions import (
     RequestInvestigation,
     PublishInvestigationReport
 )
+# Import executable actions from actions directory
+from .actions.search_deep_dive import SearchDeepDive
+# Import configuration utilities
+from .config_loader import MATConfig, get_config
 
 __all__ = [
     # Enums
@@ -46,7 +51,7 @@ __all__ = [
     # Concrete Agents (Scheme C)
     "AlphaStrategist",
     "SentimentAnalyst",
-    # Actions
+    # Actions (Message Types)
     "StartAnalysis",
     "PublishFAReport",
     "PublishTAReport",
@@ -54,6 +59,11 @@ __all__ = [
     "PublishStrategyDecision",
     "RequestInvestigation",
     "PublishInvestigationReport",
+    # Actions (Executable)
+    "SearchDeepDive",
+    # Configuration
+    "MATConfig",
+    "get_config",
 ]
 
 __version__ = "0.1.0"
