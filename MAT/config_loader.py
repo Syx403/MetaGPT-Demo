@@ -228,12 +228,132 @@ class MATConfig:
     def get_search_output_dir(self) -> Path:
         """
         Get the search output directory path.
-        
+
         Returns:
             Path to search output directory
         """
         mat_config = self.get_mat_config()
-        output_dir = mat_config.get("search_output_dir", "MAT/data/search_results")
+        output_dir = mat_config.get("search_output_dir", "MAT/report/SA")
+        
+        # Make it absolute if relative
+        output_path = Path(output_dir)
+        if not output_path.is_absolute():
+            output_path = self._project_root / output_path
+        
+        # Ensure directory exists
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        return output_path
+    
+    def get_ragflow_config(self) -> Dict[str, Any]:
+        """
+        Get RAGFlow API configuration.
+
+        Returns:
+            Dictionary with RAGFlow settings including rerank_id
+        """
+        default_config = {
+            "endpoint": "http://<your-ragflow-ip>:9380/api/v1/retrieval",
+            "api_key": "<your-api-key>",
+            "dataset_id": "<your-dataset-id>",
+            "top_k": 5,
+            "rerank_id": None  # Optional: Advanced reranking model
+        }
+
+        ragflow_config = self._config.get("ragflow", {})
+
+        # Merge with defaults
+        merged = {**default_config, **ragflow_config}
+
+        return merged
+    
+    def get_rag_output_dir(self) -> Path:
+        """
+        Get the RAG output directory path for saving RAG results.
+
+        Returns:
+            Path to RAG output directory
+        """
+        mat_config = self.get_mat_config()
+        output_dir = mat_config.get("rag_output_dir", "MAT/report/RA")
+        
+        # Make it absolute if relative
+        output_path = Path(output_dir)
+        if not output_path.is_absolute():
+            output_path = self._project_root / output_path
+        
+        # Ensure directory exists
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        return output_path
+    
+    def is_ragflow_configured(self) -> bool:
+        """
+        Check if RAGFlow API is properly configured.
+        
+        Returns:
+            True if RAGFlow API key and dataset_id are set
+        """
+        config = self.get_ragflow_config()
+        api_key = config.get("api_key", "")
+        dataset_id = config.get("dataset_id", "")
+        endpoint = config.get("endpoint", "")
+        
+        is_configured = (
+            api_key != "<your-api-key>" and
+            dataset_id != "<your-dataset-id>" and
+            "<your-ragflow-ip>" not in endpoint and
+            len(api_key) > 0 and
+            len(dataset_id) > 0
+        )
+        
+        return is_configured
+    
+    def get_technicals_config(self) -> Dict[str, Any]:
+        """
+        Get technical analysis configuration.
+        
+        Returns:
+            Dictionary with technical analysis settings
+        """
+        default_config = {
+            "default_period": 60,  # Default period in days
+            "rsi_period": 14,
+            "bb_period": 20,
+            "bb_std": 2.0,
+            "sma_period": 200,
+            "atr_period": 14,
+            "mean_reversion_thresholds": {
+                "rsi_oversold_strong": 30.0,
+                "rsi_oversold": 40.0,
+                "rsi_overbought": 60.0,
+                "rsi_overbought_strong": 70.0
+            }
+        }
+        
+        technicals_config = self._config.get("technicals", {})
+        
+        # Merge with defaults (config overrides defaults)
+        merged = {**default_config, **technicals_config}
+        
+        # Handle nested mean_reversion_thresholds
+        if "mean_reversion_thresholds" in technicals_config:
+            merged["mean_reversion_thresholds"] = {
+                **default_config["mean_reversion_thresholds"],
+                **technicals_config["mean_reversion_thresholds"]
+            }
+        
+        return merged
+    
+    def get_technical_output_dir(self) -> Path:
+        """
+        Get the technical analysis output directory path.
+
+        Returns:
+            Path to technical analysis output directory
+        """
+        mat_config = self.get_mat_config()
+        output_dir = mat_config.get("technical_output_dir", "MAT/report/TA")
         
         # Make it absolute if relative
         output_path = Path(output_dir)
@@ -297,9 +417,12 @@ class MATConfig:
         logger.info(f"Config File: {self._project_root / self.DEFAULT_CONFIG_PATH}")
         logger.info(f"OpenAI API: {'✅ Configured' if self.is_openai_configured() else '❌ Not configured'}")
         logger.info(f"Tavily API: {'✅ Configured' if self.is_tavily_configured() else '❌ Not configured'}")
+        logger.info(f"RAGFlow API: {'✅ Configured' if self.is_ragflow_configured() else '❌ Not configured'}")
         logger.info(f"Use Tavily: {self.use_tavily()}")
         logger.info(f"Log Level: {self.get_log_level()}")
-        logger.info(f"Output Dir: {self.get_search_output_dir()}")
+        logger.info(f"Search Output: {self.get_search_output_dir()}")
+        logger.info(f"RAG Output: {self.get_rag_output_dir()}")
+        logger.info(f"Technical Output: {self.get_technical_output_dir()}")
         logger.info("="*60)
 
 

@@ -6,12 +6,16 @@ Description: Package initialization for investment agent roles.
 """
 
 from .base_agent import BaseInvestmentAgent
-from .alpha_strategist import AlphaStrategist
+from .research_analyst import ResearchAnalyst
+from .technical_analyst import TechnicalAnalyst
 from .sentiment_analyst import SentimentAnalyst
+from .alpha_strategist import AlphaStrategist
 
 __all__ = [
     "BaseInvestmentAgent",
-    "AlphaStrategist",
-    "SentimentAnalyst"
+    "ResearchAnalyst",
+    "TechnicalAnalyst",
+    "SentimentAnalyst",
+    "AlphaStrategist"
 ]
 

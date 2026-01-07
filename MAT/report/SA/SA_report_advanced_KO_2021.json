@@ -1,0 +1,18 @@
+{
+  "ticker": "KO",
+  "detailed_findings": "The investigation reveals that Coca-Cola's Q4 2021 performance was strong, with significant revenue growth and market share gains despite pandemic-related challenges. The company reported a 9% organic revenue growth and a 10% increase in net sales, beating estimates. The strong performance in away-from-home channels and strategic focus on transformation indicate resilience. The decline in operating income for the quarter appears to be a temporary issue rather than a structural threat.",
+  "is_ambiguity_resolved": true,
+  "qualitative_sentiment_revision": "Confirms positive outlook with manageable risks due to strong revenue growth and market share gains.",
+  "risk_classification": "MANAGEABLE_NOISE",
+  "evidence_gaps": [
+    "Lack of specific details on the impact of marketing investments on margins",
+    "No clarity on long-term strategic initiatives beyond 2021",
+    "Unclear how ongoing pandemic challenges might affect future quarters"
+  ],
+  "key_evidence": [
+    "Coca-Cola's Q4 2021 earnings showed organic revenue growth of 9% and net sales increase of 10%.",
+    "The company gained market share and saw strong performance in away-from-home channels.",
+    "Operating income declined 28% for the quarter but grew 15% for the full year."
+  ],
+  "confidence_level": "MEDIUM"
+}

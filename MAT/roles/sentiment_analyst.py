@@ -135,94 +135,115 @@ class SentimentAnalyst(BaseInvestmentAgent):
     
     async def _normal_analysis(self) -> Message:
         """
-        Perform normal sentiment analysis.
-        
+        Perform normal sentiment analysis using SearchDeepDive in basic mode.
+
         Workflow:
-        1. Search for recent news about the ticker
-        2. Analyze sentiment using LLM
-        3. Detect market events
-        4. Extract keywords
-        5. Publish SAReport
-        
+        1. Use SearchDeepDive with mode="basic" (uses Tavily with search_depth="basic")
+        2. Receives SAReport from the action
+        3. Publishes SAReport
+
         Returns:
             Message with SAReport
         """
         ticker = self._current_ticker
         logger.info(f"📰 Starting normal sentiment analysis for {ticker}")
-        
-        # Step 1: Search for news
-        news_data = await self._search_news(ticker, query_type="general")
-        
-        if not news_data:
-            logger.warning(f"⚠️ No news found for {ticker}, using neutral defaults")
-            report = self._create_default_report(ticker)
+
+        # Use Tavily SearchDeepDive if available, otherwise fallback to DuckDuckGo
+        if self._use_tavily and self._deep_dive_action:
+            logger.info(f"🌐 Using Tavily API (mode=basic, search_depth=basic)")
+            if self.system_reference_date:
+                logger.info(f"🕰️  Time-Travel Mode: Reference date = {self.system_reference_date}")
+
+            # Execute SearchDeepDive in basic mode
+            report = await self._deep_dive_action.run(
+                ticker=ticker,
+                mode="basic",
+                llm_callback=self.llm.aask,
+                reference_date=self.system_reference_date
+            )
         else:
-            # Step 2: Analyze with LLM
-            report = await self._analyze_sentiment_with_llm(ticker, news_data, mode="normal")
-        
+            # Fallback: Use DuckDuckGo search
+            logger.info(f"🦆 Using DuckDuckGo fallback")
+
+            # Step 1: Search for news
+            news_data = await self._search_news(ticker, query_type="general")
+
+            if not news_data:
+                logger.warning(f"⚠️ No news found for {ticker}, using neutral defaults")
+                report = self._create_default_report(ticker)
+            else:
+                # Step 2: Analyze with LLM
+                report = await self._analyze_sentiment_with_llm(ticker, news_data, mode="normal")
+
         # Update environment
         self.env.update_sa_report(report)
-        
-        logger.info(f"✅ SA Report completed for {ticker}: sentiment={report.sentiment_score:.2f}")
-        
+
+        logger.info(f"✅ SA Report completed for {ticker}")
+        logger.info(f"   Qualitative Assessment: {report.qualitative_sentiment_assessment[:80]}...")
+        logger.info(f"   Events: {[e.value for e in report.impactful_events]}")
+
         # Publish report
-        return await self.publish_message(
+        return self.publish_message(
             report=report,
             cause_by=PublishSAReport
         )
     
     async def _deep_dive_investigation(self, request_msg: Message) -> Message:
         """
-        Perform deep dive investigation based on InvestigationRequest.
-        
+        Perform deep dive investigation using SearchDeepDive in advanced mode.
+
         This mode is triggered when the Alpha Strategist detects conflicts
         and needs more detailed sentiment analysis.
-        
-        If TAVILY_API_KEY is set, uses SearchDeepDive action for advanced search.
-        Otherwise, falls back to DuckDuckGo search.
-        
+
+        Uses SearchDeepDive action with mode="advanced" (search_depth="advanced").
+        If Tavily is not available, falls back to DuckDuckGo search.
+
         Args:
             request_msg: Message containing InvestigationRequest
-            
+
         Returns:
             Message with InvestigationReport
         """
         try:
             request_data = json.loads(request_msg.content)
             investigation_req = InvestigationRequest(**request_data)
-            
+
             ticker = investigation_req.ticker
             context_issue = investigation_req.context_issue
             importance_level = investigation_req.importance_level
             current_retry = investigation_req.current_retry
-            
+
             logger.info(f"\n{'='*70}")
             logger.info(f"🔍 DEEP DIVE INVESTIGATION for {ticker}")
             logger.info(f"{'='*70}")
             logger.info(f"Issue: {context_issue[:100]}...")
             logger.info(f"Importance Level: {importance_level}")
             logger.info(f"Retry: {current_retry + 1}/{investigation_req.max_retries}")
-            
+
             # Use Tavily SearchDeepDive if available
             if self._use_tavily and self._deep_dive_action:
-                logger.info(f"🌐 Using Tavily API (search_depth=advanced)")
+                logger.info(f"🌐 Using Tavily API (mode=advanced, search_depth=advanced)")
+                if self.system_reference_date:
+                    logger.info(f"🕰️  Time-Travel Mode: Reference date = {self.system_reference_date}")
                 logger.info(f"{'='*70}\n")
-                
-                # Execute SearchDeepDive action with LLM callback
+
+                # Execute SearchDeepDive action in advanced mode with LLM callback
                 report = await self._deep_dive_action.run(
                     investigation_request=investigation_req,
-                    llm_callback=self._aask  # Pass LLM method for analysis
+                    mode="advanced",
+                    llm_callback=self.llm.aask,  # Pass LLM method for analysis
+                    reference_date=self.system_reference_date
                 )
-                
+
                 # Store search results for demo/debugging
                 if hasattr(self._deep_dive_action, '_last_search_results'):
                     self._last_search_results = self._deep_dive_action._last_search_results
-                    
+
             else:
                 # Fallback: Use DuckDuckGo search
                 logger.info(f"🦆 Using DuckDuckGo fallback")
                 logger.info(f"{'='*70}\n")
-                
+
                 # Step 1: Perform targeted news search
                 search_query = self._build_investigation_query(ticker, context_issue)
                 news_data = await self._search_news(
@@ -231,14 +252,15 @@ class SentimentAnalyst(BaseInvestmentAgent):
                     custom_query=search_query,
                     max_results=10 if importance_level == 2 else 5
                 )
-                
+
                 if not news_data:
                     logger.warning("⚠️ Deep dive found no additional news")
                     report = InvestigationReport(
                         ticker=ticker,
                         detailed_findings="No significant new information found in deep dive search. Original sentiment analysis stands.",
-                        revised_sentiment_score=0.0,
-                        is_ambiguity_resolved=False
+                        qualitative_sentiment_revision="No significant new information found in deep dive search",
+                        is_ambiguity_resolved=False,
+                        risk_classification="INSUFFICIENT_DATA"
                     )
                 else:
                     # Step 2: Analyze with LLM in investigation mode
@@ -248,23 +270,27 @@ class SentimentAnalyst(BaseInvestmentAgent):
                         context_issue,
                         importance_level
                     )
-            
-            logger.info(f"✅ Investigation completed: revised_sentiment={report.revised_sentiment_score:.2f}, resolved={report.is_ambiguity_resolved}")
-            
+
+            logger.info(f"✅ Investigation completed:")
+            logger.info(f"   - Ambiguity Resolved: {report.is_ambiguity_resolved}")
+            logger.info(f"   - Risk Classification: {report.risk_classification}")
+            logger.info(f"   - Sentiment Revision: {report.qualitative_sentiment_revision[:80]}...")
+
             # Publish investigation report
-            return await self.publish_message(
+            return self.publish_message(
                 report=report,
                 cause_by=PublishInvestigationReport
             )
-            
+
         except Exception as e:
             logger.error(f"❌ Error in deep dive investigation: {e}")
             # Return default investigation report
             report = InvestigationReport(
                 ticker=self._current_ticker or "UNKNOWN",
                 detailed_findings=f"Investigation failed due to error: {str(e)}",
-                revised_sentiment_score=0.0,
-                is_ambiguity_resolved=False
+                qualitative_sentiment_revision="Investigation failed - unable to revise sentiment",
+                is_ambiguity_resolved=False,
+                risk_classification="INSUFFICIENT_DATA"
             )
             return await self.publish_message(
                 report=report,
@@ -607,9 +633,12 @@ Provide ONLY the JSON output, no additional text.
         """
         return SAReport(
             ticker=ticker,
-            sentiment_score=0.0,
             impactful_events=[MarketEvent.NONE],
             top_keywords=["no-news", "data-unavailable"],
-            news_summary="No recent news articles found for sentiment analysis. Using neutral default."
+            news_summary="No recent news articles found for sentiment analysis. Using neutral default.",
+            qualitative_sentiment_assessment="Neutral - No recent news articles available for analysis",
+            causal_narrative="No causal narrative available due to lack of news data",
+            expectation_gap="No expectation analysis available",
+            paradoxes_or_tensions="None identified"
         )
 

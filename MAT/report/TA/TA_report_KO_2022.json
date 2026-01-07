@@ -1,0 +1,18 @@
+{
+  "ticker": "KO",
+  "rsi_14": 56.14976843289883,
+  "bb_lower_touch": false,
+  "volatility_atr": 0.8054114540485346,
+  "price_to_ma20_dist": 0.0005583867667462236,
+  "price_to_ma50_dist": 0.03621527531385954,
+  "price_to_ma200_dist": 0.040858527463148796,
+  "market_regime": "The current price of $58.12 is slightly above the short-term SMA(20) of $58.09, indicating a marginally positive short-term trend. In the medium-term, the price is $58.12, which is 3.62% above the SMA(50) of $56.09, suggesting a stronger upward trend. Over the long-term, the price is 4.09% above the SMA(200) of $55.84, reinforcing a positive long-term trend. The relatively small deviations from the moving averages suggest a balanced market regime with limited mean reversion risk, as the price remains close to its structural support levels across all timeframes.",
+  "indicator_tension_analysis": "The RSI(14) at 56.15 indicates neutral momentum, neither overbought nor oversold, aligning with the price's position near the middle Bollinger Band of $58.09. This suggests a lack of strong momentum conflict. The multi-period trend structure, with the price above all moving averages, aligns with this neutral to slightly positive momentum, indicating no significant tension between momentum indicators and trend structure.",
+  "dead_cat_vs_value": "The price's proximity to the SMA(20) and its position above both the SMA(50) and SMA(200) suggest a 'Value Entry Opportunity' rather than a 'Dead Cat Bounce Risk.' The alignment of the price with key moving averages and the absence of significant deviations indicate structural support, reducing the likelihood of a dead cat bounce scenario.",
+  "pivot_zones": {
+    "ma200_level": 55.84,
+    "ma50_level": 56.09,
+    "ma20_level": 58.09,
+    "bb_middle": 58.09
+  }
+}

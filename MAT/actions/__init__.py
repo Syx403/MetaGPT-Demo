@@ -6,6 +6,9 @@ Description: Package initialization for MAT actions.
 """
 
 from .search_deep_dive import SearchDeepDive
+from .retrieve_rag_data import RetrieveRAGData
+from .calculate_technicals import CalculateTechnicals
+from .synthesize_strategy import AnalyzeConflict, SynthesizeDecision
 
 # Import action classes from sibling actions_module.py file using relative import
 from ..actions_module import (
@@ -20,6 +23,11 @@ from ..actions_module import (
 
 __all__ = [
     "SearchDeepDive",
+    "RetrieveRAGData",
+    "RetrieveRAGSDK",
+    "CalculateTechnicals",
+    "AnalyzeConflict",
+    "SynthesizeDecision",
     "StartAnalysis",
     "PublishFAReport",
     "PublishTAReport",

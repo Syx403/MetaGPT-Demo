@@ -1,8 +1,11 @@
 """
 Filename: MetaGPT-Ewan/MAT/roles/alpha_strategist.py
 Created Date: Saturday, December 27th 2025
+Updated Date: Tuesday, January 7th 2026
 Author: Ewan Su
-Description: Alpha Strategist implementing Scheme C (Active Inquiry) with dynamic conflict resolution.
+Description: Alpha Strategist implementing Scheme C (Active Inquiry) using AnalyzeConflict and SynthesizeDecision Actions.
+
+REFACTORED: Now delegates all conflict detection and decision synthesis to native Actions.
 """
 
 from typing import Dict, Optional
@@ -18,7 +21,6 @@ from ..schemas import (
     InvestigationReport,
     InvestigationRequest,
     StrategyDecision,
-    SignalIntensity,
     TradingState
 )
 from ..actions import (
@@ -27,38 +29,36 @@ from ..actions import (
     PublishSAReport,
     PublishInvestigationReport,
     RequestInvestigation,
-    PublishStrategyDecision
+    PublishStrategyDecision,
+    AnalyzeConflict,
+    SynthesizeDecision
 )
 
 
 class AlphaStrategist(BaseInvestmentAgent):
     """
-    Alpha Strategist (AS) implementing Scheme C: Active Inquiry with dynamic conflict resolution.
-    
-    Key Features:
-    1. Observes all analyst reports (FA, TA, SA) and investigation reports
-    2. Detects conflicts between fundamental/technical signals and sentiment
-    3. Dynamically requests deep dive investigations when conflicts arise
-    4. Tracks retry counts per ticker to prevent infinite loops
-    5. Makes final "Safe-First" decisions when conflicts remain unresolved
-    
-    Workflow:
-    - Collect FA, TA, SA reports
-    - Detect signal conflicts (bullish fundamentals/technicals vs negative sentiment)
-    - Calculate importance level based on growth metrics
-    - Request investigation if conflict exists and retries available
-    - Make final decision when signals align or retries exhausted
+    Alpha Strategist (AS) implementing Scheme C: Active Inquiry with conflict resolution.
+
+    REFACTORED DESIGN:
+    - All conflict detection logic delegated to AnalyzeConflict Action
+    - All decision synthesis logic delegated to SynthesizeDecision Action
+    - AS Role only handles: report buffering, workflow orchestration, message publishing
+
+    Workflow (Scheme C):
+    Step 1 (Wait): Collect FA, TA, SA reports
+    Step 2 (Inquiry): If conflict detected → Request SA investigation
+    Step 3 (Decision): Call SynthesizeDecision with all reports (including SA-Advanced if available)
     """
-    
+
     def __init__(self, **kwargs):
         super().__init__(
             name="AlphaStrategist",
             profile="Alpha Strategist",
             goal="Synthesize multi-dimensional analysis into actionable trading decisions",
-            constraints="Use Safe-First approach when conflicts remain; prioritize capital preservation",
+            constraints="Use Safe-First approach; delegate reasoning to Actions",
             **kwargs
         )
-        
+
         # Subscribe to all analyst reports and investigation reports
         self._watch([
             PublishFAReport,
@@ -66,38 +66,42 @@ class AlphaStrategist(BaseInvestmentAgent):
             PublishSAReport,
             PublishInvestigationReport
         ])
-        
+
         # Set our action types
         self.set_actions([RequestInvestigation, PublishStrategyDecision])
-        
+
+        # Initialize Actions for conflict detection and decision synthesis
+        self._analyze_conflict_action = AnalyzeConflict()
+        self._synthesize_decision_action = SynthesizeDecision()
+
         # Internal state tracking per ticker
         self._ticker_states: Dict[str, TradingState] = {}
-        self._retry_counts: Dict[str, int] = {}  # Track investigation retries per ticker
-        self._pending_investigations: Dict[str, InvestigationRequest] = {}  # Track active investigations
-        
-        logger.info("🧠 Alpha Strategist initialized with Scheme C (Active Inquiry)")
-    
+        self._pending_investigations: Dict[str, bool] = {}  # Track if investigation is pending
+        self._investigation_reports: Dict[str, InvestigationReport] = {}  # Store investigation results
+
+        logger.info("🧠 Alpha Strategist initialized with Scheme C (delegated to Actions)")
+
     def _get_or_create_state(self, ticker: str) -> TradingState:
         """
         Get or create internal trading state for a ticker.
-        
+
         Args:
             ticker: Stock ticker symbol
-            
+
         Returns:
             TradingState for the ticker
         """
         if ticker not in self._ticker_states:
             self._ticker_states[ticker] = TradingState(current_ticker=ticker)
-            self._retry_counts[ticker] = 0
+            self._pending_investigations[ticker] = False
             logger.debug(f"📊 Created new state for ticker: {ticker}")
-        
+
         return self._ticker_states[ticker]
-    
+
     async def _act(self) -> Message:
         """
-        Main action logic: process reports, detect conflicts, and make decisions.
-        
+        Main action logic: process reports, orchestrate workflow.
+
         Returns:
             Message containing either InvestigationRequest or StrategyDecision
         """
@@ -106,467 +110,254 @@ class AlphaStrategist(BaseInvestmentAgent):
         if not news:
             logger.debug("⏳ AlphaStrategist: No new messages to process")
             return None
-        
+
+        # Debug: log what messages we're processing
+        logger.info(f"📬 AlphaStrategist received {len(news)} message(s):")
+        for i, msg in enumerate(news, 1):
+            logger.info(f"   {i}. {msg.cause_by}")
+
         # Process all recent messages to update internal state
         for msg in news:
             await self._process_message(msg)
-        
+
         # Check if we have a ticker to work with
         if not self._current_ticker:
             logger.warning("⚠️ No current ticker set")
             return None
-        
+
         state = self._get_or_create_state(self._current_ticker)
-        
+
         # Check if we're waiting for an investigation response
-        if self._current_ticker in self._pending_investigations:
-            if state.sa_data is None:
-                logger.debug(f"⏳ Waiting for investigation response for {self._current_ticker}")
-                return None
-        
+        if self._pending_investigations.get(self._current_ticker, False):
+            logger.debug(f"⏳ Waiting for investigation response for {self._current_ticker}")
+            return None
+
         # Check if we have all required reports (FA, TA, SA)
         if not self._has_minimum_reports(state):
             logger.debug(f"⏳ Waiting for more reports for {self._current_ticker}")
             return None
-        
-        # Perform conflict detection and decision logic
-        return await self._make_decision(state)
-    
+
+        # Perform Scheme C workflow
+        return await self._execute_scheme_c_workflow(state)
+
     async def _process_message(self, message: Message):
         """
         Process incoming messages and update internal state.
-        
+
         Args:
             message: Message from other agents
         """
         try:
             content = json.loads(message.content)
             ticker = content.get("ticker")
-            
+
             if not ticker:
                 return
-            
+
             state = self._get_or_create_state(ticker)
-            
+
             # Get the cause_by string for comparison
             cause_by_str = str(message.cause_by) if not isinstance(message.cause_by, str) else message.cause_by
-            
+
             # Update state based on message type
-            # Note: cause_by might be a string like "MAT.actions.PublishFAReport" or the class itself
             if message.cause_by == PublishFAReport or cause_by_str.endswith("PublishFAReport"):
                 state.fa_data = FAReport(**content)
                 logger.info(f"📈 Received FA Report for {ticker}")
-                
+                logger.info(f"   Revenue: {state.fa_data.revenue_performance.value}")
+
             elif message.cause_by == PublishTAReport or cause_by_str.endswith("PublishTAReport"):
                 state.ta_data = TAReport(**content)
                 logger.info(f"📊 Received TA Report for {ticker}")
-                
+                logger.info(f"   Market Regime: {state.ta_data.market_regime[:60]}...")
+
             elif message.cause_by == PublishSAReport or cause_by_str.endswith("PublishSAReport"):
                 state.sa_data = SAReport(**content)
                 logger.info(f"📰 Received SA Report for {ticker}")
-                # Clear pending investigation if this was a response
-                if ticker in self._pending_investigations:
-                    logger.info(f"✅ Investigation response received for {ticker}")
-                    del self._pending_investigations[ticker]
-                    
-            elif message.cause_by == PublishInvestigationReport:
-                # Process investigation report - update SA data with revised findings
+                logger.info(f"   Assessment: {state.sa_data.qualitative_sentiment_assessment[:60]}...")
+
+            elif message.cause_by == PublishInvestigationReport or cause_by_str.endswith("PublishInvestigationReport"):
+                # Store investigation report separately
                 inv_report = InvestigationReport(**content)
+                self._investigation_reports[ticker] = inv_report
+                self._pending_investigations[ticker] = False
+
                 logger.info(f"🔍 Received Investigation Report for {ticker}")
-                
-                # Update sentiment with revised findings
-                if state.sa_data:
-                    state.sa_data.sentiment_score = inv_report.revised_sentiment_score
-                    state.sa_data.news_summary = f"[REVISED] {inv_report.detailed_findings}"
-                
-                # Clear pending investigation
-                if ticker in self._pending_investigations:
-                    del self._pending_investigations[ticker]
-                    
+                logger.info(f"   Risk Classification: {inv_report.risk_classification}")
+                logger.info(f"   Ambiguity Resolved: {inv_report.is_ambiguity_resolved}")
+
         except Exception as e:
             logger.error(f"❌ Error processing message: {e}")
-    
+
     def _has_minimum_reports(self, state: TradingState) -> bool:
         """
         Check if we have minimum required reports to make a decision.
-        
+
         Args:
             state: TradingState to check
-            
+
         Returns:
-            True if FA, TA, and SA reports are available
+            True if FA, TA, and SA reports are all available
         """
         return (
             state.fa_data is not None and
             state.ta_data is not None and
             state.sa_data is not None
         )
-    
-    def _detect_conflict(self, state: TradingState) -> Optional[str]:
+
+    async def _execute_scheme_c_workflow(self, state: TradingState) -> Optional[Message]:
         """
-        Detect conflicts between fundamental/technical signals and sentiment.
-        
-        Conflict exists when:
-        - FA shows growth_healthy = True (bullish fundamentals)
-        - TA shows BUY or STRONG_BUY signal (bullish technicals)
-        - SA shows negative or unclear sentiment (< 0 or close to 0)
-        
+        Execute Scheme C workflow using AnalyzeConflict and SynthesizeDecision Actions.
+
+        Workflow Steps:
+        1. Call AnalyzeConflict.run(ra, ta, sa) to detect conflicts
+        2. If conflict detected and no investigation done yet → Request investigation
+        3. If no conflict OR investigation complete → Call SynthesizeDecision.run()
+
         Args:
             state: TradingState with all reports
-            
-        Returns:
-            Conflict description if detected, None otherwise
-        """
-        fa = state.fa_data
-        ta = state.ta_data
-        sa = state.sa_data
-        
-        # Check if fundamentals and technicals are bullish
-        is_fa_bullish = fa.is_growth_healthy
-        is_ta_bullish = ta.technical_signal in [SignalIntensity.BUY, SignalIntensity.STRONG_BUY]
-        
-        # Check if sentiment is negative or unclear
-        is_sentiment_negative = sa.sentiment_score < 0.1  # Below 0.1 considered negative/unclear
-        
-        if is_fa_bullish and is_ta_bullish and is_sentiment_negative:
-            conflict_desc = (
-                f"CONFLICT DETECTED: Fundamentals (healthy={fa.is_growth_healthy}, "
-                f"revenue_growth={fa.revenue_growth_yoy:.2%}) and Technicals (signal={ta.technical_signal.value}, "
-                f"RSI={ta.rsi_14:.1f}) are BULLISH, but Sentiment is NEGATIVE/UNCLEAR "
-                f"(score={sa.sentiment_score:.2f})"
-            )
-            logger.warning(f"⚠️ {conflict_desc}")
-            return conflict_desc
-        
-        return None
-    
-    def _calculate_importance_level(self, state: TradingState) -> tuple[int, int]:
-        """
-        Calculate importance level and max retries based on fundamental metrics.
-        
-        Logic:
-        - If revenue_growth_yoy > 0.3 (30%), importance_level=2, max_retries=2
-        - Otherwise, importance_level=1, max_retries=1
-        
-        Args:
-            state: TradingState with FA report
-            
-        Returns:
-            Tuple of (importance_level, max_retries)
-        """
-        revenue_growth = state.fa_data.revenue_growth_yoy
-        
-        if revenue_growth > 0.3:
-            importance_level = 2
-            max_retries = 2
-            logger.info(f"💎 High importance detected: revenue_growth={revenue_growth:.1%} > 30%")
-        else:
-            importance_level = 1
-            max_retries = 1
-            logger.info(f"📊 Normal importance: revenue_growth={revenue_growth:.1%}")
-        
-        return importance_level, max_retries
-    
-    async def _make_decision(self, state: TradingState) -> Optional[Message]:
-        """
-        Make final decision or request investigation based on conflict detection.
-        
-        Decision Logic:
-        1. Detect conflicts between signals
-        2. If conflict exists and retries available, request investigation
-        3. If no conflict or retries exhausted, make final decision
-        4. Use "Safe-First" approach if unresolved conflicts remain
-        
-        Args:
-            state: TradingState with all reports
-            
+
         Returns:
             Message with InvestigationRequest or StrategyDecision
         """
         ticker = state.current_ticker
-        current_retry = self._retry_counts[ticker]
-        
+
         logger.info(f"\n{'='*70}")
-        logger.info(f"🧠 ALPHA STRATEGIST THINKING PROCESS for {ticker}")
+        logger.info(f"🧠 SCHEME C WORKFLOW for {ticker}")
         logger.info(f"{'='*70}")
-        
-        # Step 1: Detect conflicts
-        conflict = self._detect_conflict(state)
-        
-        if conflict:
-            # Step 2: Calculate importance and max retries
-            importance_level, max_retries = self._calculate_importance_level(state)
-            
-            logger.info(f"📋 Conflict Analysis:")
-            logger.info(f"   - Conflict: {conflict}")
-            logger.info(f"   - Current Retry: {current_retry}")
-            logger.info(f"   - Max Retries: {max_retries}")
-            logger.info(f"   - Importance Level: {importance_level}")
-            
-            # Step 3: Decide whether to investigate or finalize
-            if current_retry < max_retries:
-                # Request investigation
-                logger.info(f"🔍 Decision: INITIATE DEEP DIVE (Attempt {current_retry + 1}/{max_retries})")
-                return await self._request_investigation(state, conflict, importance_level, max_retries)
-            else:
-                # Retries exhausted, make safe decision
-                logger.warning(f"⚠️ Retries exhausted ({current_retry}/{max_retries}), proceeding with SAFE-FIRST decision")
-                return await self._finalize_decision(state, conflict_unresolved=True)
+
+        # STEP 1: Conflict Detection (delegated to AnalyzeConflict Action)
+        logger.info(f"📋 Step 1: Analyzing conflicts using AnalyzeConflict Action...")
+
+        conflict_result = await self._analyze_conflict_action.run(
+            ticker=ticker,
+            ra=state.fa_data,
+            ta=state.ta_data,
+            sa=state.sa_data
+        )
+
+        has_conflict = conflict_result["has_conflict"]
+        context_issue = conflict_result["context_issue"]
+
+        logger.info(f"   Conflict Detected: {has_conflict}")
+        if has_conflict:
+            logger.info(f"   Issue: {context_issue[:100]}...")
+
+        # STEP 2: Inquiry Decision
+        # Check if we already have an investigation report for this ticker
+        has_investigation = ticker in self._investigation_reports
+
+        if has_conflict and not has_investigation:
+            # Request investigation
+            logger.info(f"🔍 Step 2: CONFLICT DETECTED - Requesting SA investigation")
+            return await self._request_investigation(state, context_issue)
         else:
-            # No conflict, make decision
-            logger.info("✅ No conflicts detected, signals are aligned")
-            return await self._finalize_decision(state, conflict_unresolved=False)
-    
+            # Proceed to decision synthesis
+            if has_conflict and has_investigation:
+                logger.info(f"✅ Step 2: Conflict detected BUT investigation complete - proceeding to synthesis")
+            else:
+                logger.info(f"✅ Step 2: No conflicts detected - proceeding to synthesis")
+
+            # STEP 3: Decision Synthesis (delegated to SynthesizeDecision Action)
+            return await self._finalize_decision(state, context_issue if has_conflict else None)
+
     async def _request_investigation(
         self,
         state: TradingState,
-        conflict: str,
-        importance_level: int,
-        max_retries: int
+        conflict_issue: str
     ) -> Message:
         """
         Request a deep dive investigation from the Sentiment Analyst.
-        
+
         Args:
             state: TradingState with all reports
-            conflict: Description of the detected conflict
-            importance_level: 1 for normal, 2 for high
-            max_retries: Maximum number of retries allowed
-            
+            conflict_issue: Description of the detected conflict
+
         Returns:
             Message with InvestigationRequest
         """
         ticker = state.current_ticker
-        current_retry = self._retry_counts[ticker]
-        
+
         # Create investigation request
+        # Note: We use importance_level=2 for all conflicts (can be made dynamic later)
         request = InvestigationRequest(
             ticker=ticker,
             target_agent="SA",
-            context_issue=conflict,
-            current_retry=current_retry,
-            max_retries=max_retries,
-            importance_level=importance_level
+            context_issue=conflict_issue,
+            current_retry=0,
+            max_retries=1,
+            importance_level=2  # High importance by default
         )
-        
-        # Update retry count
-        self._retry_counts[ticker] += 1
-        self._pending_investigations[ticker] = request
-        
+
+        # Mark investigation as pending
+        self._pending_investigations[ticker] = True
+
         logger.info(f"📤 Publishing InvestigationRequest for {ticker}")
-        logger.info(f"   Context: {conflict[:100]}...")
-        
+        logger.info(f"   Context: {conflict_issue[:100]}...")
+
         # Publish investigation request
-        message = await self.publish_message(
+        message = self.publish_message(
             report=request,
             cause_by=RequestInvestigation
         )
-        
-        # Update environment
-        self.env.publish_message(message)
-        
+
         return message
-    
+
     async def _finalize_decision(
         self,
         state: TradingState,
-        conflict_unresolved: bool = False
+        conflict_issue: Optional[str] = None
     ) -> Message:
         """
-        Make the final trading decision and publish StrategyDecision.
-        
-        Uses "Safe-First" approach:
-        - If conflict unresolved: NEUTRAL (preserve capital)
-        - If signals aligned: Use weighted synthesis of FA, TA, SA
-        
+        Make the final trading decision using SynthesizeDecision Action.
+
+        This method delegates ALL decision logic to the SynthesizeDecision Action,
+        which contains the LLM prompts and reasoning logic.
+
         Args:
             state: TradingState with all reports
-            conflict_unresolved: Whether an unresolved conflict remains
-            
+            conflict_issue: Optional conflict description (if detected)
+
         Returns:
             Message with StrategyDecision
         """
         ticker = state.current_ticker
-        fa = state.fa_data
-        ta = state.ta_data
-        sa = state.sa_data
-        
-        logger.info(f"🎯 FINALIZING DECISION for {ticker}")
-        
-        # Build logic chain
-        logic_chain = []
-        logic_chain.append(f"FA: Growth {'HEALTHY' if fa.is_growth_healthy else 'WEAK'} (Revenue YoY: {fa.revenue_growth_yoy:.1%}, Margin: {fa.gross_margin:.1%})")
-        logic_chain.append(f"TA: Signal={ta.technical_signal.value}, RSI={ta.rsi_14:.1f}, BB_Touch={ta.bb_lower_touch}, MA200_Dist={ta.price_to_ma200_dist:.1%}")
-        logic_chain.append(f"SA: Sentiment={sa.sentiment_score:.2f}, Events={[e.value for e in sa.impactful_events]}")
-        
-        if conflict_unresolved:
-            # Safe-First: NEUTRAL when conflict remains
-            final_action = SignalIntensity.NEUTRAL
-            confidence = 40.0  # Low confidence due to unresolved conflict
-            logic_chain.append("⚠️ CONFLICT UNRESOLVED: Fundamentals/Technicals bullish but Sentiment negative")
-            logic_chain.append("🛡️ SAFE-FIRST APPROACH: Position=NEUTRAL to preserve capital")
-            risk_notes = "Unresolved conflict between signals. Monitor closely for sentiment shift. No position recommended."
-            suggested_module = "NoAction"
-            
-            logger.warning(f"🛡️ Safe-First Decision: NEUTRAL (confidence={confidence}%)")
-            
+
+        logger.info(f"🎯 Step 3: DECISION SYNTHESIS using SynthesizeDecision Action")
+
+        # Get SA-Advanced report if available
+        sa_adv_report = self._investigation_reports.get(ticker, None)
+
+        if sa_adv_report:
+            logger.info(f"   Using SA-Advanced report for conflict resolution")
         else:
-            # Signals aligned: Synthesize decision
-            final_action, confidence, synthesis_logic = self._synthesize_aligned_signals(state)
-            logic_chain.extend(synthesis_logic)
-            
-            # Generate risk notes
-            risk_notes = self._generate_risk_notes(state, final_action)
-            
-            # Suggest execution module
-            suggested_module = self._suggest_execution_module(final_action, ta)
-            
-            logger.info(f"✅ Aligned Decision: {final_action.value} (confidence={confidence}%)")
-        
-        # Create strategy decision
-        decision = StrategyDecision(
+            logger.info(f"   No SA-Advanced report - using basic reports only")
+
+        # Call SynthesizeDecision Action (delegated reasoning)
+        strategy_decision = await self._synthesize_decision_action.run(
             ticker=ticker,
-            final_action=final_action,
-            confidence_score=confidence,
-            logic_chain=logic_chain,
-            risk_notes=risk_notes,
-            suggested_module=suggested_module
+            ra=state.fa_data,
+            ta=state.ta_data,
+            sa=state.sa_data,
+            sa_adv=sa_adv_report,
+            conflict_issue=conflict_issue
         )
-        
+
         # Update environment
-        self.env.update_final_decision(decision)
-        
+        self.env.update_final_decision(strategy_decision)
+
         # Log final decision
         logger.info(f"\n{'='*70}")
         logger.info(f"📊 FINAL DECISION for {ticker}")
         logger.info(f"{'='*70}")
-        logger.info(f"Action: {final_action.value}")
-        logger.info(f"Confidence: {confidence}%")
-        logger.info(f"Module: {suggested_module}")
-        for i, step in enumerate(logic_chain, 1):
-            logger.info(f"{i}. {step}")
-        logger.info(f"Risk Notes: {risk_notes}")
+        logger.info(f"Action: {strategy_decision.final_action.value}")
+        logger.info(f"Confidence: {strategy_decision.confidence_score}%")
+        logger.info(f"Module: {strategy_decision.suggested_module}")
+        logger.info(f"Summary: {strategy_decision.decision_summary}")
+        logger.info(f"Conflict Report: {strategy_decision.conflict_report}")
         logger.info(f"{'='*70}\n")
-        
+
         # Publish decision
-        return await self.publish_message(
-            report=decision,
+        return self.publish_message(
+            report=strategy_decision,
             cause_by=PublishStrategyDecision
         )
-    
-    def _synthesize_aligned_signals(self, state: TradingState) -> tuple[SignalIntensity, float, list[str]]:
-        """
-        Synthesize final action when all signals are aligned.
-        
-        Weighting:
-        - FA: 40% (long-term health)
-        - TA: 30% (timing)
-        - SA: 30% (catalysts)
-        
-        Args:
-            state: TradingState with all reports
-            
-        Returns:
-            Tuple of (final_action, confidence_score, logic_steps)
-        """
-        fa = state.fa_data
-        ta = state.ta_data
-        sa = state.sa_data
-        
-        logic = []
-        
-        # Calculate component scores (-2 to +2 scale)
-        fa_score = 2 if fa.is_growth_healthy else -1
-        if fa.revenue_growth_yoy > 0.2:
-            fa_score += 1
-        
-        ta_signal_map = {
-            SignalIntensity.STRONG_BUY: 2,
-            SignalIntensity.BUY: 1,
-            SignalIntensity.NEUTRAL: 0,
-            SignalIntensity.SELL: -1,
-            SignalIntensity.STRONG_SELL: -2
-        }
-        ta_score = ta_signal_map[ta.technical_signal]
-        
-        sa_score = sa.sentiment_score * 2  # Convert -1 to 1 → -2 to 2
-        
-        # Weighted synthesis
-        weighted_score = (fa_score * 0.4) + (ta_score * 0.3) + (sa_score * 0.3)
-        
-        logic.append(f"Weighted Synthesis: FA_Score={fa_score:.1f}*0.4 + TA_Score={ta_score:.1f}*0.3 + SA_Score={sa_score:.1f}*0.3 = {weighted_score:.2f}")
-        
-        # Map to signal intensity
-        if weighted_score >= 1.5:
-            final_action = SignalIntensity.STRONG_BUY
-            confidence = min(95, 70 + weighted_score * 10)
-        elif weighted_score >= 0.5:
-            final_action = SignalIntensity.BUY
-            confidence = min(85, 60 + weighted_score * 10)
-        elif weighted_score >= -0.5:
-            final_action = SignalIntensity.NEUTRAL
-            confidence = 55
-        elif weighted_score >= -1.5:
-            final_action = SignalIntensity.SELL
-            confidence = min(85, 60 + abs(weighted_score) * 10)
-        else:
-            final_action = SignalIntensity.STRONG_SELL
-            confidence = min(95, 70 + abs(weighted_score) * 10)
-        
-        logic.append(f"Final Synthesis: weighted_score={weighted_score:.2f} → Action={final_action.value}")
-        
-        return final_action, confidence, logic
-    
-    def _generate_risk_notes(self, state: TradingState, action: SignalIntensity) -> str:
-        """
-        Generate risk management notes based on the decision.
-        
-        Args:
-            state: TradingState with all reports
-            action: Final action decided
-            
-        Returns:
-            Risk management guidance string
-        """
-        ta = state.ta_data
-        fa = state.fa_data
-        
-        notes = []
-        
-        # Stop-loss based on ATR
-        if action in [SignalIntensity.BUY, SignalIntensity.STRONG_BUY]:
-            stop_loss_pct = ta.volatility_atr * 2
-            notes.append(f"Set stop-loss at -{stop_loss_pct:.1f}% (2x ATR)")
-            notes.append(f"Position size: {'5%' if action == SignalIntensity.STRONG_BUY else '3%'} of portfolio")
-        
-        # Key risks from FA
-        if fa.key_risks:
-            notes.append(f"Monitor risks: {', '.join(fa.key_risks[:2])}")
-        
-        # Volatility warning
-        if ta.volatility_atr > 3.0:
-            notes.append("⚠️ High volatility - consider smaller position size")
-        
-        return " | ".join(notes) if notes else "Standard risk management applies"
-    
-    def _suggest_execution_module(self, action: SignalIntensity, ta_report: TAReport) -> str:
-        """
-        Suggest execution module based on action and technical conditions.
-        
-        Args:
-            action: Final trading action
-            ta_report: Technical analysis report
-            
-        Returns:
-            Suggested execution module name
-        """
-        if action in [SignalIntensity.BUY, SignalIntensity.STRONG_BUY]:
-            if ta_report.bb_lower_touch:
-                return "MeanReversionLong"
-            else:
-                return "TrendFollowingLong"
-        elif action in [SignalIntensity.SELL, SignalIntensity.STRONG_SELL]:
-            return "ExitPosition"
-        else:
-            return "NoAction"
-

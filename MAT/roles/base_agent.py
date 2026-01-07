@@ -8,6 +8,8 @@ Description: Base agent class for all investment analysts using MetaGPT's pub-su
 from typing import Type, Optional
 from abc import ABC, abstractmethod
 from pydantic import BaseModel
+import re
+import json
 
 from metagpt.roles import Role
 from metagpt.schema import Message
@@ -35,21 +37,28 @@ class BaseInvestmentAgent(Role, ABC):
         profile: str,
         goal: str,
         constraints: str = "",
+        system_reference_date: Optional[str] = None,
         **kwargs
     ):
         """
         Initialize a base investment agent.
-        
+
         Args:
             name: Agent's name (e.g., "ResearchAnalyst")
             profile: Agent's profile/role description
             goal: Agent's primary objective
             constraints: Optional constraints for the agent's behavior
+            system_reference_date: Optional reference date for historical analysis (e.g., "2022-12-31")
             **kwargs: Additional arguments passed to the Role base class
         """
         super().__init__(name=name, profile=profile, goal=goal, constraints=constraints, **kwargs)
         self._current_ticker: Optional[str] = None
-        logger.info(f"🤖 {profile} '{name}' initialized")
+        self.system_reference_date: Optional[str] = system_reference_date
+
+        if system_reference_date:
+            logger.info(f"🤖 {profile} '{name}' initialized with time-travel mode: {system_reference_date}")
+        else:
+            logger.info(f"🤖 {profile} '{name}' initialized")
     
     @property
     def env(self) -> InvestmentEnvironment:
@@ -64,12 +73,60 @@ class BaseInvestmentAgent(Role, ABC):
     def set_ticker(self, ticker: str):
         """
         Set the ticker symbol this agent should focus on.
-        
+
         Args:
             ticker: The stock ticker symbol (e.g., "AAPL", "TSLA")
         """
         self._current_ticker = ticker
         logger.debug(f"🎯 {self.profile} now tracking: {ticker}")
+
+    @staticmethod
+    def parse_json_robustly(text: str) -> dict:
+        """
+        Robustly extract JSON from LLM response that may be wrapped in Markdown code blocks.
+
+        This method handles common LLM output formats:
+        - Plain JSON: {"key": "value"}
+        - Markdown wrapped: ```json\n{"key": "value"}\n```
+        - Mixed content: Some text before {"key": "value"} and after
+
+        Args:
+            text: Raw LLM response text
+
+        Returns:
+            Parsed JSON dictionary
+
+        Raises:
+            json.JSONDecodeError: If no valid JSON found in the text
+
+        Example:
+            >>> text = '```json\\n{"signal": "BUY"}\\n```'
+            >>> BaseInvestmentAgent.parse_json_robustly(text)
+            {'signal': 'BUY'}
+        """
+        # Remove markdown code block markers if present
+        text = text.strip()
+
+        # Try to find JSON between curly braces using regex
+        # This handles cases where JSON is wrapped in markdown or has extra text
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+
+        if match:
+            json_str = match.group(0)
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError as e:
+                logger.warning(f"⚠️ Found JSON-like structure but failed to parse: {e}")
+                logger.debug(f"Extracted text: {json_str[:200]}...")
+                raise
+
+        # Fallback: try to parse the entire text as JSON
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ No valid JSON found in LLM response")
+            logger.debug(f"Raw text: {text[:500]}...")
+            raise ValueError(f"Could not extract JSON from LLM response: {e}")
     
     async def _observe(self) -> int:
         """
@@ -131,10 +188,10 @@ class BaseInvestmentAgent(Role, ABC):
             self._current_ticker in message.content
         )
     
-    async def publish_message(
+    def publish_message(
         self,
         report: BaseModel,
-        cause_by: Type[Action],
+        cause_by: Type[Action] = None,
         send_to: str = ""
     ) -> Message:
         """
@@ -147,13 +204,18 @@ class BaseInvestmentAgent(Role, ABC):
         3. Published to the environment for other agents to observe
         
         Args:
-            report: A Pydantic model (FAReport, TAReport, SAReport, or StrategyDecision)
-            cause_by: The Action class that generated this report
+            report: A Pydantic model (FAReport, TAReport, SAReport, or StrategyDecision) OR a Message object
+            cause_by: The Action class that generated this report (optional if report is already a Message)
             send_to: Optional specific recipient role name
             
         Returns:
             The Message object that was published
         """
+        # If report is already a Message (called by MetaGPT's Role.run()), just publish it
+        if isinstance(report, Message):
+            self.env.publish_message(report)
+            return report
+        
         # Serialize the Pydantic model to JSON for message content
         message_content = report.model_dump_json(indent=2)
         

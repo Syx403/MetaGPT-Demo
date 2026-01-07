@@ -1,0 +1,16 @@
+{
+  "ticker": "KO",
+  "final_action": "BUY",
+  "confidence_score": 80.0,
+  "logic_chain": [
+    "Step 1: Technical analysis shows a strong bullish trend with the price above all key moving averages, indicating upward momentum, but with a mean reversion risk due to significant deviation from long-term averages.",
+    "Step 2: Fundamentals indicate strong revenue growth and profitability, with stable cash flow and cautious but optimistic guidance.",
+    "Step 3: Sentiment analysis reveals mixed sentiment due to strong earnings but cautious guidance and macroeconomic concerns.",
+    "Step 4: Conflicts resolved via SA-Advanced findings, confirming positive outlook with manageable risks.",
+    "Step 5: Final decision is a BUY due to strong technicals and fundamentals, with sentiment concerns being manageable."
+  ],
+  "risk_notes": "Consider setting stop-loss levels near the 50-day moving average to manage mean reversion risk.",
+  "suggested_module": "trend_following_engine",
+  "decision_summary": "Coca-Cola shows strong technical and fundamental indicators, supporting a BUY decision despite mixed sentiment due to macroeconomic concerns.",
+  "conflict_report": "The conflict between strong earnings and cautious sentiment was resolved by confirming the positive outlook with manageable risks through SA-Advanced findings."
+}
